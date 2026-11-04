@@ -1,0 +1,192 @@
+[
+  {
+    "type": "function",
+    "name": "bossSVG",
+    "inputs": [
+      {
+        "name": "tier",
+        "type": "uint8",
+        "internalType": "uint8"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "output",
+        "type": "string",
+        "internalType": "string"
+      }
+    ],
+    "stateMutability": "pure"
+  },
+  {
+    "type": "function",
+    "name": "cardSVG",
+    "inputs": [
+      {
+        "name": "c",
+        "type": "tuple",
+        "internalType": "struct RaiderCard.Card",
+        "components": [
+          {
+            "name": "id",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "stance",
+            "type": "uint8",
+            "internalType": "uint8"
+          },
+          {
+            "name": "level",
+            "type": "uint8",
+            "internalType": "uint8"
+          },
+          {
+            "name": "ko",
+            "type": "bool",
+            "internalType": "bool"
+          },
+          {
+            "name": "enlisted",
+            "type": "bool",
+            "internalType": "bool"
+          },
+          {
+            "name": "burrow",
+            "type": "bool",
+            "internalType": "bool"
+          },
+          {
+            "name": "isDemo",
+            "type": "bool",
+            "internalType": "bool"
+          },
+          {
+            "name": "trophies",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "scrap",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "dreams",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "score",
+            "type": "uint256",
+            "internalType": "uint256"
+          }
+        ]
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "string",
+        "internalType": "string"
+      }
+    ],
+    "stateMutability": "pure"
+  },
+  {
+    "type": "function",
+    "name": "cardURI",
+    "inputs": [
+      {
+        "name": "c",
+        "type": "tuple",
+        "internalType": "struct RaiderCard.Card",
+        "components": [
+          {
+            "name": "id",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "stance",
+            "type": "uint8",
+            "internalType": "uint8"
+          },
+          {
+            "name": "level",
+            "type": "uint8",
+            "internalType": "uint8"
+          },
+          {
+            "name": "ko",
+            "type": "bool",
+            "internalType": "bool"
+          },
+          {
+            "name": "enlisted",
+            "type": "bool",
+            "internalType": "bool"
+          },
+          {
+            "name": "burrow",
+            "type": "bool",
+            "internalType": "bool"
+          },
+          {
+            "name": "isDemo",
+            "type": "bool",
+            "internalType": "bool"
+          },
+          {
+            "name": "trophies",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "scrap",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "dreams",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "score",
+            "type": "uint256",
+            "internalType": "uint256"
+          }
+        ]
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "string",
+        "internalType": "string"
+      }
+    ],
+    "stateMutability": "pure"
+  },
+  {
+    "type": "function",
+    "name": "stanceName",
+    "inputs": [
+      {
+        "name": "stance",
+        "type": "uint8",
+        "internalType": "uint8"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "string",
+        "internalType": "string"
+      }
+    ],
+    "stateMutability": "pure"
+  }
+]
