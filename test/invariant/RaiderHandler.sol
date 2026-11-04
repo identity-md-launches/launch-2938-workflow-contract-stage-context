@@ -47,6 +47,11 @@ contract RaiderHandler is Test {
     uint64 public totalBurrow;
     bytes32 private lastHash;
     uint8 private move;
+    /// @dev The core pages forward only, so a nap before the first processed Wheel has no known
+    ///      last dataHash: it keeps the default previous run and arms no move.
+    bool public wheelSeen;
+    uint64 public runWork;
+    uint64 public lastRunWork = 1600;
 
     constructor(SqueekRaider game_, MockCore core_, MockNFT nft_, MockStaking staking_) {
         game = game_;
@@ -170,8 +175,10 @@ contract RaiderHandler is Test {
         while (round + 1 < next) _idleRound(bossBefore);
         ++round;
         _applyChanges();
-        if (burrow >= 18) _knockOut();
+        if (burrow >= 18 && wheelSeen) _knockOut();
+        wheelSeen = true;
         burrow = 0;
+        runWork += work;
         lastHash = dataHash;
         for (uint256 i; i < ACTORS; ++i) {
             Model storage m = models[i];
@@ -218,8 +225,10 @@ contract RaiderHandler is Test {
         _applyChanges();
         ++burrow;
         ++totalBurrow;
-        if (burrow == 2) {
+        if (burrow == 2 && wheelSeen) {
             move = uint8(uint256(keccak256(abi.encode(lastHash, b))) % 3);
+            lastRunWork = runWork;
+            runWork = 0;
         }
         if (burrow < 2 || burrow > 37) return;
         for (uint256 i; i < ACTORS; ++i) {

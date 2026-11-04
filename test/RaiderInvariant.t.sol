@@ -89,6 +89,10 @@ contract RaiderInvariantTest is StdInvariant, Test {
             assertEq(game.koEpoch(s), handler.epochs(s), "KO epoch");
         }
         assertEq(game.burrowStreak(), handler.burrow(), "Burrow streak");
+        assertEq(game.lastRunWork(), handler.lastRunWork(), "previous run work");
+        (, uint64 napRounds, bool armed) = game.pendingMove();
+        assertEq(napRounds, handler.burrow(), "nap length");
+        assertEq(armed, handler.burrow() >= 18 && handler.wheelSeen(), "move armed");
         assertEq(game.totalBurrowRounds(), handler.totalBurrow(), "rest clock");
         assertEq(game.processedThrough(), handler.round(), "processing cursor");
         assertEq(game.boss().seasonId, (current - 1) / 3 + 1, "season");
