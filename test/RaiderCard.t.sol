@@ -4,6 +4,8 @@ pragma solidity 0.8.26;
 import {Test} from "forge-std/Test.sol";
 import {RaiderCard} from "../src/RaiderCard.sol";
 import {Text} from "../src/Text.sol";
+import {SqueekRaider} from "src/SqueekRaider.sol";
+import {MockCore, MockNFT, MockStaking} from "./mocks/SqueekchainMocks.sol";
 
 contract RaiderCardTest is Test {
     RaiderCard internal card;
@@ -79,6 +81,83 @@ contract RaiderCardTest is Test {
     function testFuzzBase64RoundTrip(bytes memory raw) public pure {
         vm.assume(raw.length <= 1024);
         assertEq(_decode(bytes(Text.base64(raw))), raw);
+    }
+
+    function testDecimalZeroOneAndUint256Maximum() public pure {
+        assertEq(Text.decimal(0), "0");
+        assertEq(Text.decimal(1), "1");
+        assertEq(
+            Text.decimal(type(uint256).max),
+            "115792089237316195423570985008687907853269984665640564039457584007913129639935"
+        );
+    }
+
+    function testFuzzDecimalAndBase64MatchFoundryOracles(uint256 value, bytes memory input) public pure {
+        assertEq(Text.decimal(value), vm.toString(value));
+        assertEq(Text.base64(input), vm.toBase64(input));
+    }
+
+    /// forge-config: default.fuzz.runs = 32
+    function testFuzzEveryMetadataFieldSurvivesStrictJSON(uint256 entropy, uint256 value) public view {
+        RaiderCard.Card memory c = RaiderCard.Card(
+            entropy,
+            uint8(entropy % 5),
+            uint8((entropy >> 8) % 6),
+            entropy & 1 != 0,
+            entropy & 2 != 0,
+            entropy & 4 != 0,
+            entropy & 8 != 0,
+            value,
+            entropy ^ value,
+            value >> 128,
+            type(uint256).max - value
+        );
+        string memory json = string(_decode(_strip(card.cardURI(c), "data:application/json;base64,")));
+        assertEq(vm.parseJsonString(json, ".name"), string.concat("Squeek Raider #", vm.toString(c.id)));
+        assertEq(vm.parseJsonString(json, ".attributes[0].value"), card.stanceName(c.stance));
+        assertEq(vm.parseJsonUint(json, ".attributes[1].value"), c.level);
+        assertEq(vm.parseJsonBool(json, ".attributes[2].value"), c.ko);
+        assertEq(vm.parseJsonBool(json, ".attributes[3].value"), c.isDemo);
+        assertEq(vm.parseJsonBool(json, ".attributes[4].value"), c.enlisted);
+        assertEq(vm.parseJsonUint(json, ".attributes[5].value"), c.trophies);
+        assertEq(vm.parseJsonUint(json, ".attributes[6].value"), c.scrap);
+        assertEq(vm.parseJsonUint(json, ".attributes[7].value"), c.dreams);
+        assertEq(vm.parseJsonUint(json, ".attributes[8].value"), c.score);
+        assertEq(
+            string(_decode(_strip(vm.parseJsonString(json, ".image"), "data:image/svg+xml;base64,"))),
+            card.cardSVG(c)
+        );
+    }
+
+    function testGameMetadataIncludesLazyDreamsKOAndDemoIdentity() public {
+        uint256 genesis = 1_793_022_600;
+        vm.warp(genesis);
+        MockCore core = new MockCore();
+        SqueekRaider game =
+            new SqueekRaider(address(core), address(new MockNFT()), address(new MockStaking()));
+        uint256 id = game.enlistDemo(3);
+        bytes32 nightmare;
+        for (uint256 h;; ++h) {
+            if (uint256(keccak256(abi.encode(bytes32(h), uint64(1)))) % 3 == 2) {
+                nightmare = bytes32(h);
+                break;
+            }
+        }
+        core.wheel(2, 4, nightmare);
+        vm.warp(genesis + 2 * 600);
+        game.advance(128);
+        core.wheel(21, 4, bytes32(0)); // Eighteen Burrows, then Nightmare before damage.
+        vm.warp(genesis + 21 * 600);
+        game.advance(128);
+        string memory json = string(_decode(_strip(game.cardURI(id), "data:application/json;base64,")));
+        assertEq(vm.parseJsonString(json, ".attributes[0].value"), "DREAMER");
+        assertTrue(vm.parseJsonBool(json, ".attributes[2].value"));
+        assertTrue(vm.parseJsonBool(json, ".attributes[3].value"));
+        assertTrue(vm.parseJsonBool(json, ".attributes[4].value"));
+        assertEq(vm.parseJsonUint(json, ".attributes[6].value"), 1);
+        assertEq(vm.parseJsonUint(json, ".attributes[7].value"), 17);
+        assertEq(vm.parseJsonUint(json, ".attributes[8].value"), 5101);
+        assertEq(game.scoreOf(1, id), 5101);
     }
 
     function _strip(string memory input, string memory prefix) internal pure returns (bytes memory out) {
