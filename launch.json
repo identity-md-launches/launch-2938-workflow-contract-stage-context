@@ -1,0 +1,14 @@
+{
+  "kind": "evm_contracts",
+  "contracts": [
+    {
+      "contract": "SqueekRaider",
+      "constructorArgs": [
+        "0x980b4424c007caf7a1f3670b48c8eaef7ebc3d44",
+        "0xcb98349c134ab983da5bfd80527dfe2552bdb70f",
+        "0x4b67b739dfd832f4eac67a7aa3bc244fb74cea4f"
+      ]
+    }
+  ],
+  "notes": "SqueekRaider on Sepolia uses the approved Squeekchain core, NFT and staking addresses in that order. Its constructor creates the stateless RaiderCard renderer, accessible through renderer(). The game is immutable and permissionless with no owner or admin."
+}
