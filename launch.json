@@ -10,5 +10,5 @@
       ]
     }
   ],
-  "notes": "SqueekRaider on Sepolia uses the approved Squeekchain core, NFT and staking addresses in that order. Its constructor creates the stateless RaiderCard renderer, accessible through renderer(). The game is immutable and permissionless with no owner or admin."
+  "notes": "SqueekRaider on Sepolia uses the approved Squeekchain core, NFT and staking addresses in that order. Its constructor stores them as immutables, creates the stateless RaiderCard renderer, accessible through renderer(), and summons boss 1 (tier 0, season 1) from the default lastRunWork of 1600; it makes no external call and reads no chain state, so it deploys on an empty chain. The first advance() anchors at the core's settled round. The game is immutable and permissionless with no owner, admin, pause, upgrade, fees, tokens or ETH."
 }
