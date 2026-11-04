@@ -8,7 +8,7 @@ All functions below are nonpayable and guarded against reentrancy. All actions o
 
 | Function | Caller | Effect |
 | --- | --- | --- |
-| `advance(uint256 maxRounds) -> uint64` | Anyone | Returns the new processed cursor; bounded best effort. Zero anchors an unanchored game but processes no steps afterward. |
+| `advance(uint256 maxRounds) -> uint64` | Anyone | Returns the new processed cursor; bounded best effort. Zero anchors an unanchored game but processes no steps afterward. Stops early after spending 10,000,000 gas or with 2,000,000 gas left, so a large backlog can take several calls; compare the returned cursor with `liveRound()`. |
 | `enlist(uint256[] ids,uint8 stance)` | Each ID's controller | Register real IDs and queue first entry. |
 | `enlistDemo(uint8 stance) -> uint256` | Wallet itself | Register its deterministic demo ID once. |
 | `setStance(uint256[] ids,uint8 stance)` | Each controller | Queue a stance change or replace an unstarted stance/enlist change. |
@@ -32,8 +32,8 @@ Stance values are 0 Striker, 1 Guard, 2 Forager, 3 Dreamer. Do not submit 4 (Non
 | `raider(uint256)` | A `RaiderView`, described below. |
 | `boss()`, `bossAt(uint64)` | Current or historical `Boss`, described below. Unknown historical IDs return an empty struct. |
 | `bossId()`, `season()` | IDs begin at 1; seasons group three successive bosses. |
-| `lastRunWork()` | Previous observed run, default 1600. |
-| `pendingMove()` | `(move, napRounds, armed)`, where moves 0/1/2 mean Frenzy/Quake/Nightmare. A move display is meaningful during a nap; armed means at least 18 Burrows. |
+| `lastRunWork()` | Total work of the previous observed run, which can be 0, default 1600. |
+| `pendingMove()` | `(move, napRounds, armed)`, where moves 0/1/2 mean Frenzy/Quake/Nightmare. A move display is meaningful during a nap; armed means at least 18 Burrows after a processed Wheel. A nap before the first Wheel processed after anchoring has no move: `move` reads 0 and `armed` stays false, however long it runs, so show no move then (`cover()` likewise reports the unset default target). |
 | `burrowStreak()`, `totalBurrowRounds()` | Current consecutive idle count and all processed idle rounds since anchor. |
 | `cover()` | `(targetStance, targetPower, realTarget, realGuards, blocked)`. Target power uses equipment; the last three fields use non-demo headcounts. |
 | `alivePower(uint256)`, `aliveCount(uint256)`, `nonDemoCount(uint256)` | Live equipment sum, all-raider count and real-raider count for stance index 0–3. |
@@ -62,7 +62,7 @@ All per-raider events index `id`. Demo status is explicit in `Enlisted` and `rai
 
 - `Anchored` establishes the starting cursor. `RoundApplied(fromRound,throughRound,wheel,work,bossId)` is a single Wheel round when `wheel` is true, or an inclusive all-idle range when false. Never assume one event per idle round.
 - `Enlisted(id,controller,isDemo)` discovers participants. `ChangeQueued` records round, kind and destination. A new queue event replaces the previously canceled pending change. `ChangeApplied` and `ChangeCancelled` are lazy per-ID notifications and can arrive well after the effective round.
-- `NapStarted` and `MoveLanded` report the stored move and its result. `KO(stance,epoch,bossId,round,power)` identifies an **entire cohort**. Every raider still in that stance/epoch at that round is KO'd; there is intentionally no unbounded per-raider event loop. `raider` or the documented pending/epoch rules resolve an individual membership.
+- `NapStarted` and `MoveLanded` report the stored move and its result. A nap before the first Wheel processed after anchoring emits neither. `KO(stance,epoch,bossId,round,power)` identifies an **entire cohort**. Every raider still in that stance/epoch at that round is KO'd; there is intentionally no unbounded per-raider event loop. `raider` or the documented pending/epoch rules resolve an individual membership.
 - `BossSlain` reports all inflicted units on the old boss, including overkill. `BossSummoned` starts the next. `PowerChanged` reports W and the resulting remaining HP in internal units.
 - `Credited(id,bossId,seasonId,damage,dreams)` reports newly persisted **whole** damage and Dreams. Fractions are retained on chain, not lost at each checkpoint. A zero-damage Dream credit is valid. `ScrapCredited` and `ScrapSpent` update the spendable counter. `TrophyCredited` is emitted once per earned boss trophy. `Checkpointed` reports cursor, KO and completion even when no new score accrued.
 

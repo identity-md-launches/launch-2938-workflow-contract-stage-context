@@ -17,6 +17,10 @@ contract SqueekRaider {
     uint256 internal constant MAX_PAGES = 8;
     uint256 internal constant MAX_BATCH = 64;
     uint256 internal constant MAX_CHECKPOINT = 8;
+    /// @dev Round processing stops after spending this much gas, so a call fits the 2^24 transaction cap.
+    uint256 internal constant ADVANCE_GAS = 10_000_000;
+    /// @dev No new step or page starts below this: enough for the costliest step and a small action.
+    uint256 internal constant GAS_RESERVE = 2_000_000;
     uint8 internal constant STRIKER = 0;
     uint8 internal constant GUARD = 1;
     uint8 internal constant FORAGER = 2;
@@ -146,6 +150,7 @@ contract SqueekRaider {
     uint64 public totalBurrowRounds;
     bytes32 private lastWheelHash;
     uint8 private napMove;
+    bool private wheelSeen;
     uint64 public bossId = 1;
     uint256 public totalDamageUnits;
     uint256[4] public alivePower;
@@ -259,7 +264,8 @@ contract SqueekRaider {
     }
 
     /// @notice Best effort; unavailable or invalid source data stops progress without reverting.
-    /// @dev Like every EVM call, needs sufficient gas. maxRounds counts active/queued round steps.
+    /// @dev Like every EVM call, needs sufficient gas. maxRounds counts active/queued round steps, and
+    ///      a backlog too costly for one transaction stops early: call again to resume at the cursor.
     function advance(uint256 maxRounds) external nonReentrant returns (uint64) {
         _advance(maxRounds);
         return processedThrough;
@@ -277,17 +283,23 @@ contract SqueekRaider {
             return;
         }
         if (budget > MAX_ADVANCE) budget = MAX_ADVANCE;
-        for (uint256 pages; pages < MAX_PAGES && budget != 0 && processedThrough < settled; ++pages) {
+        uint256 floor = gasleft();
+        floor = floor > ADVANCE_GAS + GAS_RESERVE ? floor - ADVANCE_GAS : GAS_RESERVE;
+        for (
+            uint256 pages;
+            pages < MAX_PAGES && budget != 0 && processedThrough < settled && gasleft() > floor;
+            ++pages
+        ) {
             CoreReader.Page memory p;
             (ok, p) = CoreReader.page(core, processedThrough, settled, processedWork);
             if (!ok) return;
-            budget = _page(p, budget);
+            budget = _page(p, budget, floor);
         }
     }
 
-    function _page(CoreReader.Page memory p, uint256 budget) internal returns (uint256) {
+    function _page(CoreReader.Page memory p, uint256 budget, uint256 floor) internal returns (uint256) {
         uint256 nextRecord;
-        while (processedThrough < p.through && budget != 0) {
+        while (processedThrough < p.through && budget != 0 && gasleft() > floor) {
             uint64 active = nextRecord < p.rounds.length ? p.rounds[nextRecord].roundId : type(uint64).max;
             uint64 queued = _queueHead < _queuedRounds.length ? _queuedRounds[_queueHead] : type(uint64).max;
             uint64 next = active < queued ? active : queued;
@@ -319,8 +331,10 @@ contract SqueekRaider {
         uint64 old = burrowStreak;
         uint64 count = through - processedThrough;
         uint64 streak = old + count;
-        if (old < 2 && streak >= 2) {
-            if (runWork != 0) lastRunWork = runWork;
+        // A nap before the first processed Wheel follows no observed run and has no known last
+        // dataHash: it keeps the default lastRunWork and arms no move. Every later nap follows a Wheel.
+        if (old < 2 && streak >= 2 && wheelSeen) {
+            lastRunWork = runWork;
             runWork = 0;
             napMove = uint8(uint256(keccak256(abi.encode(lastWheelHash, bossId))) % 3);
             emit NapStarted(from + (1 - old), bossId, napMove, lastRunWork);
@@ -338,7 +352,8 @@ contract SqueekRaider {
     }
 
     function _wheel(uint64 round, uint64 work, bytes32 dataHash) internal {
-        if (burrowStreak >= 18) _landMove(round);
+        if (burrowStreak >= 18 && wheelSeen) _landMove(round);
+        wheelSeen = true;
         burrowStreak = 0;
         runWork += work;
         lastWheelHash = dataHash;
@@ -371,7 +386,7 @@ contract SqueekRaider {
         uint8 target = _target();
         uint256 power = alivePower[target];
         // Cover counts real raiders, not equipment: levels boost damage only.
-        bool blocked = nonDemoCount[target] != 0 && nonDemoCount[GUARD] * 2 >= nonDemoCount[target];
+        bool blocked = _blocked(target);
         emit MoveLanded(round, bossId, napMove, blocked, power);
         if (power == 0 || blocked) return;
         uint256 oldWeight = partyWeight();
@@ -383,6 +398,10 @@ contract SqueekRaider {
         nonDemoCount[target] = 0;
         emit KO(target, epoch, bossId, round, power);
         _rescale(oldWeight, round);
+    }
+
+    function _blocked(uint8 target) internal view returns (bool) {
+        return nonDemoCount[target] != 0 && nonDemoCount[GUARD] * 2 >= nonDemoCount[target];
     }
 
     function _target() internal view returns (uint8) {
@@ -422,7 +441,7 @@ contract SqueekRaider {
         uint64 previous = lastRunWork;
         uint256 clamped = previous < 1000 ? 1000 : previous > 12000 ? 12000 : previous;
         uint256 hp = 3 * clamped * (100 + partyWeight()) * 150 * (13 ** uint256(tier)) / (10 ** uint256(tier));
-        uint64 seasonId = (bossId - 1) / 3 + 1;
+        uint64 seasonId = _seasonOf(bossId);
         _bosses[bossId] = Boss(bossId, seasonId, tier, round, 0, previous, hp, hp, 0);
         emit BossSummoned(bossId, seasonId, tier, hp, previous);
     }
@@ -507,6 +526,8 @@ contract SqueekRaider {
         }
     }
 
+    /// @notice Pays 10*2^level Scrap now; the level applies at E. A KO of the raider's stance processed
+    ///         before E cancels the upgrade (a KO wins) and the paid Scrap is not refunded.
     function upgrade(uint256 id) external nonReentrant {
         _beforeAction();
         _controller(id);
@@ -673,9 +694,7 @@ contract SqueekRaider {
         if (change.round != 0 && change.round <= processedThrough) {
             if (!_settle(id, p, _end(r, change.round))) return p;
             Boundary storage b = _boundaries[change.round];
-            if (
-                change.kind == Change.Bury || change.from == NONE || change.fromEpoch == b.epochs[change.from]
-            ) {
+            if (_applies(change, b)) {
                 _transition(r, change, b);
                 p.applied = true;
             } else {
@@ -684,6 +703,10 @@ contract SqueekRaider {
             delete r.pending;
         }
         p.complete = _settle(id, p, _end(r, 0));
+    }
+
+    function _applies(Pending memory change, Boundary storage b) internal view returns (bool) {
+        return change.kind == Change.Bury || change.from == NONE || change.fromEpoch == b.epochs[change.from];
     }
 
     function _transition(Raider memory r, Pending memory change, Boundary storage b) internal view {
@@ -743,7 +766,7 @@ contract SqueekRaider {
                 emit Credited(
                     id,
                     op.bossId,
-                    (op.bossId - 1) / 3 + 1,
+                    _seasonOf(op.bossId),
                     c.damageUnits / DAMAGE_SCALE - beforeDamage,
                     op.dreams
                 );
@@ -774,11 +797,15 @@ contract SqueekRaider {
     }
 
     function season() external view returns (uint64) {
-        return (bossId - 1) / 3 + 1;
+        return _seasonOf(bossId);
+    }
+
+    function _seasonOf(uint64 id) internal pure returns (uint64) {
+        return (id - 1) / 3 + 1;
     }
 
     function pendingMove() external view returns (uint8 move, uint64 napRounds, bool armed) {
-        return (napMove, burrowStreak, burrowStreak >= 18);
+        return (napMove, burrowStreak, burrowStreak >= 18 && wheelSeen);
     }
 
     function cover()
@@ -790,7 +817,7 @@ contract SqueekRaider {
         targetPower = alivePower[target];
         realTarget = nonDemoCount[target];
         realGuards = nonDemoCount[GUARD];
-        blocked = realTarget != 0 && realGuards * 2 >= realTarget;
+        blocked = _blocked(target);
     }
 
     /// @notice Exact score for one boss, including lazy credits; constant work irrespective of backlog.
@@ -806,10 +833,7 @@ contract SqueekRaider {
         c.dreams += dreams;
         if (applied) {
             Boundary storage boundary = _boundaries[change.round];
-            if (
-                change.kind == Change.Bury || change.from == NONE
-                    || change.fromEpoch == boundary.epochs[change.from]
-            ) {
+            if (_applies(change, boundary)) {
                 _transition(r, change, boundary);
                 (damage, dreams) = _uncredited(r, b, _end(r, 0));
                 c.damageUnits += damage;
@@ -832,7 +856,7 @@ contract SqueekRaider {
     }
 
     function seasonScoreOf(uint64 seasonId, uint256 id) external view returns (uint256 score) {
-        if (seasonId == 0 || seasonId > (bossId - 1) / 3 + 1) return 0;
+        if (seasonId == 0 || seasonId > _seasonOf(bossId)) return 0;
         uint64 first = (seasonId - 1) * 3 + 1;
         for (uint64 i; i < 3; ++i) {
             score += scoreOf(first + i, id);

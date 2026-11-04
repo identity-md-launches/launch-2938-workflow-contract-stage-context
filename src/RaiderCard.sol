@@ -143,7 +143,7 @@ contract RaiderCard {
     }
 
     function _item(uint8 stance, uint8 level, bool enlisted) internal pure returns (string memory) {
-        if (!enlisted) return "";
+        if (!enlisted || stance > 3) return "";
         string[6] memory colors = [string("#A1A5B7"), "#79C796", "#71BCE0", "#AA8BE3", "#E8BD62", "#F08DB1"];
         string memory shape = stance == 0
             ? '<path d="M26 15h1v9h-1zM24 21h5v1h-5z"/>'

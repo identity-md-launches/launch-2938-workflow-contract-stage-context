@@ -63,6 +63,20 @@ contract RaiderCardTest is Test {
         assertTrue(vm.parseJsonBool(json, ".attributes[3].value"));
     }
 
+    function testPendingRaiderWithNoStanceDrawsNoItem() public view {
+        string memory dreamer = "M26 15h1v3h3v1h-3v3h-1v-3h-3v-1h3zM25 23h3v1h-3z";
+        RaiderCard.Card memory c;
+        c.id = 1;
+        c.enlisted = true;
+        c.stance = 4;
+        string memory pending = card.cardSVG(c);
+        assertFalse(_contains(pending, dreamer));
+        assertFalse(_contains(pending, '<g fill="#A1A5B7">'));
+        assertTrue(_contains(pending, "NONE"));
+        c.stance = 3;
+        assertTrue(_contains(card.cardSVG(c), dreamer));
+    }
+
     function testOwlTintsAndInvalidTier() public {
         string memory a = card.bossSVG(0);
         string memory b = card.bossSVG(1);
